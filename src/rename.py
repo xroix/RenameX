@@ -124,7 +124,7 @@ class RenameCommand(commands.Cog):
 
     @commands.command()
     @commands.is_owner()
-    @commands.has_any_role("Menschen oberster Klasse", "Edelmann", "Eine Farbe über dir")
+    # @commands.has_any_role("Menschen oberster Klasse", "Edelmann", "Eine Farbe über dir")
     async def rename(self, ctx: commands.Context, victim: typing.Union[discord.Role, discord.Member, str],
                      bypass_ignore: typing.Optional[bool] = False):
         # Only allow 'all' as a string for `victim`
