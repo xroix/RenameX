@@ -29,9 +29,18 @@ from discord.ext import commands
 
 
 class HelpCommand(commands.Cog):
+    """ /help
+    """
+
     def __init__(self, client):
+        """ Initialize
+        :param client: the client
+        """
         super().__init__()
         self.client = client
+
+        # Remove old
+        self.client.remove_command("help")
 
     @commands.command()
     async def help(self, ctx: commands.Context):
@@ -51,5 +60,5 @@ class HelpCommand(commands.Cog):
         embed.add_field(name=":telephone: **Author**",
                         value="Created by XroixHD", inline=False)
         embed.add_field(name=":keyboard: **Source Code**",
-                        value="Coming soon!", inline=False)
+                        value="https://github.com/XroixHD/RenameX", inline=False)
         await ctx.send("", embed=embed)

@@ -23,33 +23,97 @@ SOFTWARE.
 """
 
 import asyncio
+import datetime
 import time
 import typing
 
 import discord
 from discord.ext import commands
 
-from src import client, storage
+from src import storage
 
 
 class RenameCommand(commands.Cog):
     """ The rename cog / module / command
-    Ever wanted to rename you entire Discord Server?
+        Ever wanted to rename you entire Discord Server?
     """
 
-    def __init__(self, _client):
+    def __init__(self, client):
         """ Initialize
-        :param _client: the client
+        :param client: the client
         """
         super().__init__()
 
-        self.client = _client
-        self.storage = _client.storage
+        self.client = client
+        self.storage = client.storage
+
+        self.cached_roles = {}
+
+    def cacheRoles(self, guild: discord.Guild, *, override=False):
+        """ Caches role objects for guild
+        :param guild: the guild
+        :param override: prevent caching if already set
+        """
+        if guild.id in self.cached_roles and not override:
+            return
+
+        self.cached_roles.update({
+            guild.id: {
+                "female": discord.utils.get(guild.roles,
+                                            name=self.client.female_role) if self.client.female_role != "" else "",
+
+                "male": discord.utils.get(guild.roles,
+                                          name=self.client.male_role) if self.client.male_role != "" else "",
+
+                "ignore": discord.utils.get(guild.roles,
+                                            name=self.client.male_role) if self.client.male_role != "" else ""
+            }
+        })
+
+    async def renameMember(self, member: discord.Member, bypass_ignore: bool) -> str:
+        """ Rename a member randomly
+        :param member: the person to rename
+        :param bypass_ignore: if to bypass ignore role
+        :returns: kinda a debug string
+        """
+        self.cacheRoles(member.guild, override=False)
+        roles = self.cached_roles[member.guild.id]
+
+        try:
+            # If it is ignored
+            if not bypass_ignore and roles["ignore"] in member.roles:
+                txt = f"> [?] ignored {member.name}\n"
+
+            # Or female
+            elif roles["female"] != "" or roles["female"] in member.roles:
+                name = await self.storage.popNames("f")
+
+                txt = f"> [w] {member.name} => {name}\n"
+
+                await member.edit(nick=name)
+
+            # Or male
+            elif roles["male"] != "" or roles["male"] in member.roles:
+                name = await self.storage.popNames("m")
+
+                txt = f"> [m] {member.name} => {name}\n"
+
+                await member.edit(nick=name)
+
+            # Not specified
+            else:
+                txt = f"> [?] ignored {member.name}; unspecified Gender!\n"
+
+        except Exception as e:
+            txt = f"> [!] ignored {member.name}; error: {e}\n"
+            
+        return txt
 
     @commands.command()
     async def test(self, ctx: commands.Context):
         """ Test the mechanism
-        :param commands.Context ctx: the context"""
+        :param commands.Context ctx: the context
+        """
         _old = len(self.storage.names_male)
         for i, member in enumerate(ctx.guild.members):
             print(i, member, await self.storage.popNames("m"))
@@ -59,163 +123,77 @@ class RenameCommand(commands.Cog):
         await ctx.send(f"List length changed from {_old} to {len(self.storage.names_male)}")
 
     @commands.command()
-    @commands.has_any_role("Menschen erster Klasse", "Edelmann")
+    @commands.is_owner()
+    @commands.has_any_role("Menschen oberster Klasse", "Edelmann", "Eine Farbe über dir")
     async def rename(self, ctx: commands.Context, victim: typing.Union[discord.Role, discord.Member, str],
-                     bypass_ignore: typing.Optional[str] = "false"):
-        """ Rename the entire server or perhaps only one player?
-        :param ctx: the context
-        :param victim: the victim
-        :param bypass_ignore: if it bypasses the ignore feature
-        """
-
-        # Parse parameters
+                     bypass_ignore: typing.Optional[bool] = False):
+        # Only allow 'all' as a string for `victim`
         if isinstance(victim, str) and victim != "all":
             raise commands.BadArgument(f"> Invalid Argument `{victim}`!")
 
-        bypass_ignore = True if bypass_ignore.lower() == "true" else False
-
         with ctx.typing():
-            await ctx.send(f"**# Log**:\n┌────────────────────────────\n> "
-                           f"Ignore-Role **bypass** activated: `{bypass_ignore}`")
-
-            # Roles
-            female_role_obj = discord.utils.get(ctx.guild.roles, name=self.client.female_role) \
-                if not isinstance(self.client.female_role, storage.All) else storage.All()
-
-            male_role_obj = discord.utils.get(ctx.guild.roles, name=self.client.male_role) \
-                if not isinstance(self.client.male_role, storage.All) else storage.All()
-
-            ignored_role_obj = discord.utils.get(ctx.guild.roles, name=self.client.ignore_role)
 
             # For Profiling
             START_TIME = time.time()
-            STATS = {"count": 0}
 
-            # If it is a role
-            if isinstance(victim, discord.Role) or isinstance(victim, str):
-                _iter = None
+            if isinstance(victim, str) and victim == "all":
+                # Vars
+                iterable = ctx.guild.members
+                confirmation_desc = "All members will be renamed randomly, are you sure?"
 
-                # If all
-                if isinstance(victim, str) and victim == "all":
-                    # Vars
-                    _iter = ctx.guild.members
-                    _msg = await ctx.send(f"> Will change nicknames of everyone! Are you sure?")
+            elif isinstance(victim, discord.Member):
+                iterable = [victim]
+                confirmation_desc = None
 
-                # Or just a role
-                else:
-                    _iter = victim.members
-                    _msg = await ctx.send(f"> Will change nicknames of role `{victim.name}`! Are you sure?")
+            elif isinstance(victim, discord.Role):
+                iterable = victim.members
+                confirmation_desc = f"All members of `{victim.name}` will be renamed randomly, are you sure?"
 
-                # Ask user
-                # Add reactions
-                await _msg.add_reaction("✅")
-                await _msg.add_reaction("❌")
+            else:
+                raise Exception("Fatal Exception: Unknown victim")
 
-                def check(reaction, user):
-                    """Check the reaction
-                    """
-                    return user == ctx.author and str(reaction.emoji) in ["✅", "❌"]
+            # Send confirmation embed message ONLY for victim**s**
+            if confirmation_desc:
+                confirmation_embed = discord.Embed(title="Confirmation", description=confirmation_desc,
+                                                   timestamp=datetime.datetime.now(), color=discord.Color.random())
+                confirmation_msg = await ctx.send(embed=confirmation_embed)
+
+                await confirmation_msg.add_reaction("✅")
+                await confirmation_msg.add_reaction("❌")
 
                 try:
-                    _reply = await self.client.wait_for('reaction_add', timeout=10.0, check=check)
+                    reply = await self.client.wait_for('reaction_add', timeout=10.0,
+                                                       check=lambda reaction, user: user == ctx.author and str(
+                                                           reaction.emoji) in ["✅", "❌"])
 
                 except asyncio.TimeoutError:
-                    await _msg.edit(content="> Timeout :(")
+                    await confirmation_msg.reply("Timeout.")
+                    return
 
                 else:
-                    if str(_reply[0].emoji) == "✅":
-                        await ctx.send("> O.K.")
-
-                    elif str(_reply[0].emoji) == "❌":
-                        await ctx.send("> Exit")
+                    if str(reply[0].emoji) == "❌":
+                        await confirmation_msg.reply("Understandable. Exiting.")
                         return
 
-                txt = ""
-
-                # Iterate over each member of guild or role
-                for i, member in enumerate(_iter):
-                    text = ""
-
-                    # If it is ignored
-                    if not bypass_ignore and ignored_role_obj in member.roles:
-                        txt += f"> [?] ignored {member.name}\n"
-                        print(f"> [?] ignored {member.name}\n")
-
-                    # Or female
-                    elif isinstance(female_role_obj, storage.All) or female_role_obj in member.roles:
-                        name = await self.storage.popNames("f")
-
-                        txt += f"> [w] {member.name} => {name}\n"
-                        print(f"> [w] {member.name} => {name}\n")
-
-                        await member.edit(nick=name)
-
-                    # Or else => male
-                    elif isinstance(male_role_obj, storage.All) or male_role_obj in member.roles:
-                        name = await self.storage.popNames("m")
-
-                        txt += f"> [m] {member.name} => {name}\n"
-                        print(f"> [m] {member.name} => {name}\n")
-
-                        await member.edit(nick=name)
-
-                    # Not specified
-                    else:
-                        txt += f"> [?] ignored {member.name}; unspecified Gender!\n"
-                        print(f"> [?] ignored {member.name}\n; unspecified Gender!")
-
-                    # Send status
-                    if i % 5 == 0:
-                        await ctx.send(txt)
-                        txt = ""
-
-                # If there wasn't send something
-                if txt:
+            # Send status embed message where status gets updated
+            txt = ""
+            for i, member in enumerate(iterable):
+                
+                txt += await self.renameMember(member, bypass_ignore)
+                
+                # Send status
+                if i % 5 == 0 and txt:
                     await ctx.send(txt)
+                    txt = ""
 
-                # For profiling
-                STATS["count"] = i + 1
-
-            # Or a member
-            elif isinstance(victim, discord.Member):
-                txt = ""
-                name = None
-
-                # If it is ignored
-                if not bypass_ignore and ignored_role_obj in victim.roles:
-                    txt = f"> [?] ignored {victim.name}\n"
-                    print(f"[?] ignored {victim.name}\n")
-
-                # Or female
-                elif isinstance(female_role_obj, storage.All) or female_role_obj in victim.roles:
-                    name = await self.storage.popNames(g="f")
-
-                    txt = f"> [w] {victim.name} => {name}\n"
-                    print(f"> [w] {victim.name} => {name}\n")
-
-                    await victim.edit(nick=name)
-
-                # Or else => male
-                elif isinstance(male_role_obj, storage.All) or male_role_obj in victim.roles:
-                    name = await self.storage.popNames(g="m")
-
-                    txt = f"> [m] {victim.name} => {name}\n"
-                    print(f"> [m] {victim.name} => {name}\n")
-
-                    await victim.edit(nick=name)
-
-                else:
-                    txt = f"> [?] ignored {victim.name}; unspecified Gender!\n"
-                    print(f"> [?] ignored {victim.name}\n; unspecified Gender!")
-
+            # If there wasn't send something
+            if txt:
                 await ctx.send(txt)
 
-                # For profiling
-                STATS["count"] = 1
+            # For profiling
+            await ctx.send(f"# Renamed {i + 1} user in {str(time.time() - START_TIME)[0:5]}s!")
 
-            # For all types
-            await ctx.send(f"# Renamed {STATS['count']} user in {str(time.time() - START_TIME)[0:5]}s!")
-
+        # Save new state of names
         self.storage.cacheNames()
 
     @rename.error
@@ -224,9 +202,18 @@ class RenameCommand(commands.Cog):
         :param ctx: the context
         :param exception: the error
         """
-        print(exception)
+        print("rename_error", exception)
         await ctx.send(exception)
 
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member):
+        """ Rename users who join
+        :param member: the (now) member
+        """
+        if self.storage["rename_on_join"]:
+            await self.renameMember(member, True)
+
+    @commands.Cog.listener()
     async def on_command_error(self, ctx, exception):
         """ Handle errors
         :param ctx: the context

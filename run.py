@@ -21,14 +21,12 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
-from src import client
-from src import storage
+from src import client, storage
 
-TOKEN = ""
 
 if __name__ == '__main__':
-    client = client.Client("/",
-                           {"api_url": "https://randomname.de/?format=json&count={}&gender={}", "fetch_count": 100},
-                           "E-Girl", storage.All(), "ignore")
+    # Create storage beforehand
+    storage = storage.Storage()
 
-    client.run(TOKEN)
+    client = client.Client(storage)
+    client.run(storage["token"])

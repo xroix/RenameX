@@ -32,24 +32,23 @@ class Client(commands.Bot):
     """ The command bot (will classify it as client)
     """
 
-    def __init__(self, prefix: str, storage_opt: dict, female_role, male_role, ignore_role: str):
+    def __init__(self, storage: storage.Storage):
         """ Initialize
         Note: if it any role is a gender than use storage.All()
-        :param prefix: the command prefix
-        :param storage_opt: options for the storage class
-        :param female_role: role that indicates a female role
-        :param ignore_role: role that ignores a rename
+        :param storage: the storage instance
         """
-        super().__init__(command_prefix=prefix)
+        intents = discord.Intents.default()
+        intents.members = True
 
-        self.storage = storage.Storage(**storage_opt)
+        super().__init__(command_prefix=storage["prefix"], intents=intents)
 
-        self.female_role = female_role
-        self.male_role = male_role
-        self.ignore_role = ignore_role
+        self.storage = storage
+
+        self.female_role = storage["identifiers"]["female"]
+        self.male_role = storage["identifiers"]["male"]
+        self.ignore_role = storage["identifiers"]["ignore"]
 
         # Help command
-        self.remove_command("help")
         self.add_cog(help.HelpCommand(self))
 
         # Rename command
@@ -59,8 +58,12 @@ class Client(commands.Bot):
         # Test if there were cached names
         if not self.storage.readNames():
             await self.storage.fetchNewNames()
+            self.storage.cacheNames()
+
+        # Set presence
+        activity = discord.Activity(type=discord.ActivityType.competing, name="renaming people")
+        await self.change_presence(activity=activity)
 
         print("")
         print("Rename X was started!")
         print("")
-        print(self.storage.names_female, self.storage.names_male)
