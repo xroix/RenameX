@@ -85,7 +85,7 @@ class RenameCommand(commands.Cog):
                 txt = f"> [?] ignored {member.name}\n"
 
             # Or female
-            elif roles["female"] != "" or roles["female"] in member.roles:
+            elif roles["female"] == "" or roles["female"] in member.roles:
                 name = await self.storage.popNames("f")
 
                 txt = f"> [w] {member.name} => {name}\n"
@@ -93,7 +93,7 @@ class RenameCommand(commands.Cog):
                 await member.edit(nick=name)
 
             # Or male
-            elif roles["male"] != "" or roles["male"] in member.roles:
+            elif roles["male"] == "" or roles["male"] in member.roles:
                 name = await self.storage.popNames("m")
 
                 txt = f"> [m] {member.name} => {name}\n"
