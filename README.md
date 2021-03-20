@@ -2,8 +2,8 @@
 Just a fun bot to rename perhaps an entire server
 
 ## Note
-It isn't optimised and most settings are "hardcoded", these must be changed <br>
-in the `run.py`. However, classes and methods should be commented enough
+Settings are changeable in `res/settings.json` <br>
+Set `rename_on_join` to true if you want to rename users who join
 
 ## Usage
 /rename [member;role;"all"] {optional: bypass_ignore}
