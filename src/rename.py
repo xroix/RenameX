@@ -66,7 +66,7 @@ class RenameCommand(commands.Cog):
                                           name=self.client.male_role) if self.client.male_role != "" else "",
 
                 "ignore": discord.utils.get(guild.roles,
-                                            name=self.client.male_role) if self.client.male_role != "" else ""
+                                            name=self.client.ignore) if self.client.ignore != "" else ""
             }
         })
 
